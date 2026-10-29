@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tesla Roadster 發表會 3D 物理模擬</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1b1f24;--mu:#5d6772;--card:#fff;--ln:#d9dee4;--ac:#2a6fdb;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12161b;--fg:#e8ecf0;--mu:#99a4af;--card:#1b2128;--ln:#323b45;--ac:#6ea2ff;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12161b;--fg:#e8ecf0;--mu:#99a4af;--card:#1b2128;--ln:#323b45;--ac:#6ea2ff;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:14px}h1{font-size:20px;margin:4px 0}.sub{color:var(--mu);font-size:13px;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:10px;margin-bottom:12px}
+#wrap{border-radius:8px;overflow:hidden;touch-action:none}#wrap canvas{display:block;width:100%}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:8px}
+button,select{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:6px 12px;cursor:pointer}
+button.p,button.on{background:var(--ac);color:#fff;border-color:var(--ac)}input[type=range]{flex:1;min-width:120px;accent-color:var(--ac)}
+label{font-size:13px;color:var(--mu);display:flex;align-items:center;gap:4px}
+.tabs{display:flex;gap:8px;margin-bottom:10px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:13px}.kv b{font-variant-numeric:tabular-nums;text-align:right}
+.st{display:inline-block;padding:2px 10px;border-radius:99px;color:#fff;font-size:13px}
+.bar{display:grid;grid-template-columns:128px 1fr 90px;gap:6px;align-items:center;font-size:12px;margin:3px 0}.bar i{display:block;height:10px;border-radius:5px;min-width:1px}
+.bar span{text-align:right;font-variant-numeric:tabular-nums;color:var(--mu)}
+.dt{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}.bq{border-left:3px solid var(--ln);padding:2px 8px;margin:7px 0;font-size:13px;line-height:1.55}
+h2{font-size:14px;margin:0 0 6px}.note{font-size:12px;color:var(--mu)}.lg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--mu);margin-top:6px}.lg u{display:inline-block;width:12px;height:3px;margin-right:4px;vertical-align:middle;text-decoration:none}
+.warn{background:#c0392b;color:#fff;border-radius:8px;padding:6px 10px;margin-top:8px;font-size:13px;display:none}
+.pg{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px 16px;margin-top:8px}.pr{display:block;font-size:12px;color:var(--mu)}.pr span{display:flex;justify-content:space-between}.pr b{color:var(--fg);font-variant-numeric:tabular-nums}.pr input{width:100%}
+pre{margin:0;max-height:560px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre;color:var(--fg)}details>summary{cursor:pointer;font-weight:600}
+</style></head><body><main>
+<h1>Tesla Roadster 發表會：3D 物理模擬（依報導數據）</h1>
+<p class="sub">拖曳旋轉視角、滾輪縮放。動畫只用箭頭表示推力，不顯示數字；數值在下方面板。可在「參數調整」改變條件，模擬會即時重算。</p>
+<div class="tabs"><button class="on" id="t1">模擬</button><button id="t2">程式碼</button></div>
+<div id="v1">
+<div class="card"><div id="wrap"></div><div class="warn" id="wn"></div>
+<div class="ctl"><button class="p" id="pl">播放</button><button id="rs">重來</button><input type="range" id="tm" min="0" max="1" step="0.01" value="0" aria-label="時間">
+<label>速度<select id="sp"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select>×</label>
+<label><input type="checkbox" id="fv" checked>力向量</label><label><input type="checkbox" id="fo" checked>跟隨車輛</label></div>
+<div class="lg" id="lg"></div></div>
+<div class="card"><details><summary>參數調整（改完即時重算）</summary><div class="pg" id="pg"></div><div class="ctl"><button id="pr">還原報導預設</button></div></details></div>
+<div class="grid"><div class="card"><h2>即時狀態 <span class="st" id="stg"></span></h2><div class="kv" id="kv"></div></div>
+<div class="card"><h2>此刻受力（N）</h2><div class="kv" id="fk"></div></div>
+<div class="card"><h2>受力平衡（ΣF = m·a）</h2><div id="bl"></div></div>
+<div class="card"><h2>能量與散失（J）</h2><div id="eb"></div><div class="note" id="ebn"></div></div>
+<div class="card"><h2>推導結果</h2><div class="kv" id="dv"></div></div>
+</div>
+<div class="card"><h2>能量隨時間</h2><canvas id="ec" style="display:block"></canvas><div class="lg" id="el"></div></div>
+<p class="note">依報導：質量約 1,700 kg（目標值）、坡道約 170°／21 m、噴流總推力超過 80 kN、吸附約 2 g、0–60 mph 約 0.81 s。報導沒有的數據（巡航與到頂速度、停留時間、滾轉慣量、側推力臂、懸吊與煞車、噴射控制律）是我的假設。簡化：質心平動＋單軸滾轉，推力沿車身向下噴射方向，側向分量不計；落地為彈簧阻尼＋固定煞車力，不含輪胎抓地極限；場景為示意。</p>
+</div>
+<div id="v2" class="card" hidden><div class="ctl" style="margin:0 0 8px"><button id="cp">複製程式碼</button><span class="note">以下就是這個頁面正在執行的模擬與繪圖程式。</span></div><pre id="code"></pre></div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script id="main">
+const g=9.8,$=id=>document.getElementById(id);
+const DEF=[["m","質量","kg",1000,2500,50,1700],["R","坡道半徑","m",6,14,.1,10.58],["arc","坡道弧度","°",150,180,1,170],["vc","上坡巡航速度","m/s",2,10,.5,6],["varr","到頂速度","m/s",.2,4,.1,1.5],["hold","停留位置（自底部，車頭不超出坡道）","°",120,175,1,156],["Th","頂端停留時間","s",0,3,.1,1],["Fl","離坡推出力","kN",10,90,.5,55.9],["cap","吸附力上限","g",.3,3,.1,2],["I","滾轉慣量","kg·m²",300,3000,10,770],["tf","翻轉總時間","s",.6,3,.1,1.2],["arm","側推力臂","m",.5,1.2,.05,1],["TB","噴射推力上限","kN",20,100,1,80],["dly","噴射啟動（翻轉結束後）","s",-1,1,.1,0],["vl","下降目標速度","m/s",.5,6,.1,2],["k","彈簧常數","kN/m",50,500,10,200],["z","阻尼比","",.2,2,.1,1],["xm","懸吊行程（到頂後為硬擋）","m",.1,.4,.01,.25],["Fb","煞車力","kN",2,20,.5,6],["Fr","阻力","kN",0,3,.1,1]];
+const P={};DEF.forEach(d=>P[d[0]]=d[6]);let S={};
+const LUX0=-21.9,VH=[[1.9,1.55],[2.03,1.95],[2.55,3.9],[1.92,1.62],[1.85,1.44]],VOFF=[0,2.7,5.9,9.1,11.6],OB=VH.map((v,i)=>[LUX0-VOFF[i]-v[0]/2,LUX0-VOFF[i]+v[0]/2,-.9+v[1]]);
+function sim(){let tf=P.tf,o;for(let i=0;i<10;i++){o=core(tf);S.tfUsed=tf;const f=o.filter(r=>r.st==3||r.st==4);if(S.rested||!f.length||(f[f.length-1].th>=Math.PI-.02&&f[f.length-1].phi>=Math.PI-.02)||tf<=.31)break;tf=Math.max(.3,Math.min(tf*.85,S.tair*.8))}return o}
+function core(tf){
+ const m=P.m,R=P.R,PE=P.arc*Math.PI/180,PH=Math.max(.3,Math.min(P.hold*Math.PI/180,PE-2.4/R)),Fr=P.Fr*1e3,Fl=P.Fl*1e3,I=P.I,TB=P.TB*1e3,k=P.k*1e3,Fb=P.Fb*1e3,mg=m*g,cap=P.cap*mg,t1=tf/2,tau=I*Math.PI/(t1*t1),FS=tau/(2*P.arm),c=P.z*2*Math.sqrt(k*m);
+ S={m,R,PE,I,FS,tau,cap,k,c,mg,TB,t1,lost:null};
+ const cross=(y,v,a,th)=>{const A=.5*a,d=v*v-4*A*(y-th);if(Math.abs(A)<1e-12)return v<0?-(y-th)/v:1e9;if(d<0)return 1e9;const r=[1,-1].map(s=>(-v+s*Math.sqrt(d))/(2*A)).filter(x=>x>1e-12);return r.length?Math.min(...r):1e9};
+ const o=[];let t=0,lt=-1,Wd=0,Qr=0,Wb=0,Wq=0,Qb=0,Qd=0,Wk=0,Qk=0,phi=0,v=0;
+ const rec=(st,x,y,vx,vy,th,om,F,p,xc)=>{const KE=.5*m*(vx*vx+vy*vy),PEn=mg*y,KR=.5*I*om*om,Es=.5*k*Math.max(xc,0)**2+10*k*Math.max(xc-P.xm,0)**2;o.push({t,st,x,y,vx,vy,th,om,F,phi:p,sup:Math.max(0,-(F.rad||0)),KE,PE:PEn,KR,Es,Em:KE+PEn+KR+Es,Qr,Qb,Qd,Qk,Wd,Wb,Wq,Wk,Qt:Qr+Qb+Qd+Qk,hit:!!S.hit});S.hit=false};
+ const due=()=>t-lt>=.01-1e-12,res=u=>u>0?Fr:0,f=(p,u,F)=>[u/R,(F-res(u)-mg*Math.sin(p))/m];
+ const adv=(F,h)=>{if(v<=0&&F-mg*Math.sin(phi)<=Fr){if(!S.lost)S.lost={t,sup:0,stall:1,phi};return}
+  const a=f(phi,v,F),b=f(phi+.5*h*a[0],v+.5*h*a[1],F),e=f(phi+.5*h*b[0],v+.5*h*b[1],F),d=f(phi+h*e[0],v+h*e[1],F);
+  const dp=h*(a[0]+2*b[0]+2*e[0]+d[0])/6,dv=h*(a[1]+2*b[1]+2*e[1]+d[1])/6,ds=R*dp;if(v+dv<0){if(!S.lost)S.lost={t,sup:0,stall:1,phi};return}Wd+=F*ds;Qr+=res(v)*ds;phi+=dp;v+=dv;t+=h};
+ const ramp=(st,F,force)=>{const N=m*v*v/R+mg*Math.cos(phi);if(-N>cap&&!S.lost)S.lost={t,sup:-N};
+  if(due()||force){lt=t;rec(st,R*Math.sin(phi),R*(1-Math.cos(phi)),v*Math.cos(phi),v*Math.sin(phi),0,0,{drive:F,res:-res(v),grav:-mg,rad:N},phi,0)}};
+ const Lt=Math.min(.35,PH*.5);let it=0;
+ while(phi<PH-1e-9&&!S.lost&&it++<4e5){const vt=phi<PH-Lt?P.vc:P.varr+(P.vc-P.varr)*Math.max(0,(PH-phi)/Lt);
+  const F=Math.min(60e3,Math.max(-40e3,m*3*(vt-v)+mg*Math.sin(phi)+res(v)));let h=2e-4;if(v>0&&phi+v/R*h>PH)h=Math.max(1e-7,(PH-phi)/(v/R));
+  adv(F,h);ramp(0,F,phi>=PH-1e-9)}
+ S.varr=v;if(!S.lost&&v>6)S.noHold=v;
+ if(!S.lost&&!S.noHold){Qb+=.5*m*v*v;v=0;
+  for(const te=t+P.Th;t<te-1e-9&&!S.lost;){t=Math.min(te,t+.01);const N=mg*Math.cos(phi);if(-N>cap)S.lost={t,sup:-N};lt=t;rec(1,R*Math.sin(phi),R*(1-Math.cos(phi)),0,0,0,0,{drive:mg*Math.sin(phi),res:0,grav:-mg,rad:N},phi,0)}}
+ it=0;while(phi<PE-1e-9&&!S.lost&&it++<4e5){let h=1e-4;if(v>0&&phi+v/R*h>PE)h=Math.max(1e-7,(PE-phi)/(v/R));adv(Fl,h);ramp(2,Fl,phi>=PE-1e-9)}
+ let x=R*Math.sin(phi),y=R*(1-Math.cos(phi)),vx=v*Math.cos(phi),vy=v*Math.sin(phi),th=0,om=0,tt=0,land=false,p=phi;const p0=phi,tb=2*t1+P.dly;S.vexit=Math.hypot(vx,vy);
+ while(!land){p=p0+(Math.PI-p0)*Math.min(1,tt/(2*t1));const uy=Math.cos(p)*Math.cos(th),burn=tt>=tb-1e-12;let T=0;
+  if(burn){const cmd=m*(g+2*(-(P.vl+.25*Math.max(y,0))-vy));T=uy>.2?Math.min(TB,Math.max(.25*mg,cmd/uy)):.25*mg}
+  const Fx=-T*Math.sin(p)*Math.cos(th),Fy=T*uy,ax=Fx/m,ay=Fy/m-g,tq=tt<t1-1e-12?tau:(tt<2*t1-1e-12?-tau:0),ar=tq/I;let h=1e-4;
+  for(const te of[t1,2*t1,tb])if(tt<te-1e-12&&te-tt<h)h=te-tt;
+  const qc=cross(y,vy,ay,0);let ev=false;if(qc<=h){h=Math.max(qc,1e-9);ev=true}
+  const dx=vx*h+.5*ax*h*h,dy=vy*h+.5*ay*h*h,tn=th+om*h+.5*ar*h*h;Wb+=Fx*dx+Fy*dy;Wq+=tq*(tn-th);x+=dx;y+=dy;vx+=ax*h;vy+=ay*h;om+=ar*h;th=tn;tt+=h;t+=h;
+  {const c_=Math.abs(Math.cos(p)),s_=Math.abs(Math.sin(p)),Hh=.82*Math.abs(Math.cos(th))+.95*Math.abs(Math.sin(th)),hx=2.25*c_+Hh*s_,hy=2.25*s_+Hh*c_;
+   for(const[x0,x1,top]of OB){const ox=Math.min(x+hx-x0,x1-(x-hx));if(ox>0&&y-hy<top&&y>-1){const oy=top-(y-hy);let nx=0,ny=0,pu;if(oy<=ox||y>top){ny=1;pu=oy}else{nx=x<(x0+x1)/2?-1:1;pu=ox}
+    const k0=.5*m*(vx*vx+vy*vy),vn=vx*nx+vy*ny;if(vn<0){vx-=1.15*vn*nx;vy-=1.15*vn*ny;const tx=-ny,ty=nx,vt=vx*tx+vy*ty;vx-=.2*vt*tx;vy-=.2*vt*ty}
+    x+=nx*pu;y+=ny*pu;Wk+=mg*ny*pu;Qk+=Math.max(0,k0-.5*m*(vx*vx+vy*vy));S.hit=true;if(!S.crash)S.crash={t,x,y,v:Math.sqrt(2*k0/m)}}}}
+  if(ev||y<=0){y=0;land=true}if(tt>15){land=true;S.rested=true}
+  if(due()||land){lt=t;rec(burn?4:3,x,y,vx,vy,th,om,{grav:-mg,land:T,torque:tq},p,0)}}
+ S.tair=tt;if(S.rested){S.vland=0;S.xcmax=0;S.maxSup=Math.max(...o.map(r=>r.sup));S.xstop=x;return o}Qd+=.5*I*om*om;const sg=vx<0?-1:1,xT=x,thL=th,pL=Math.PI,kb=20*k,xm=P.xm,cc=a=>c*(1+4*Math.min(1,Math.max(0,(a-xm)/.02))),fsp=a=>k*a+kb*Math.max(a-xm,0),fz=(a,b)=>[b,(mg-(a>0||(a==0&&b>0)?fsp(a)+cc(a)*b:0))/m];
+ let xc=0,vc=-vy,vm=Math.abs(vx),T0=0,dist=0;S.vland=-vy;
+ while(T0<3-1e-12){const ct=xc>0||(xc==0&&vc>0),fb=ct?Fb:0;let h=Math.min(3e-5,3-T0),stop=false;if(fb>0&&vm>0&&vm/(fb/m)<=h){h=vm/(fb/m);stop=true}
+  let snap=null;if(!stop){if(vc>0){if(xc<xm&&xc+vc*h>xm){h=Math.max((xm-xc)/vc,1e-9);snap=xm}else if(xc<0&&xc+vc*h>0){h=Math.max(-xc/vc,1e-9);snap=0}}else if(vc<0){if(xc>xm&&xc+vc*h<xm){h=Math.max((xm-xc)/vc,1e-9);snap=xm}else if(xc>0&&xc<=xm&&xc+vc*h<0){h=Math.max(-xc/vc,1e-9);snap=0}}}
+  const a=fz(xc,vc),b=fz(xc+.5*h*a[0],vc+.5*h*a[1]),e=fz(xc+.5*h*b[0],vc+.5*h*b[1]),d=fz(xc+h*e[0],vc+h*e[1]);
+  let xn=xc+h*(a[0]+2*b[0]+2*e[0]+d[0])/6;const vn=vc+h*(a[1]+2*b[1]+2*e[1]+d[1])/6,vmid=.5*(vc+vn);if(snap!==null)xn=snap;if(ct)Qd+=cc(.5*(xc+xn))*vmid*vmid*h;
+  let vmn=vm;if(vm>0&&fb>0){vmn=stop?0:Math.max(0,vm-fb/m*h);const dd=.5*(vm+vmn)*h;Qb+=fb*dd;dist+=dd}else if(vm>0)dist+=vm*h;
+  xc=xn;vc=vn;vm=vmn;T0+=h;t+=h;S.xcmax=Math.max(S.xcmax||0,xc);
+  if(due()){lt=t;const cn=xc>0;rec(5,xT+sg*dist,-xc,sg*vm,-vc,thL,0,{grav:-mg,spring:cn?fsp(xc):0,damper:cn?cc(xc)*vc:0,brake:cn&&vm>0?-sg*Fb:0},pL,xc)}}
+ S.maxSup=Math.max(...o.map(r=>r.sup));S.xstop=o[o.length-1].x;return o}
+const NM=["沿坡道上升","頂端停留","離坡推出","離坡翻轉","持續向下噴射","落地／煞車"],CL=["#2a6fdb","#9b59b6","#e07b00","#7a7a7a","#c0392b","#2e9e5b"];
+const FC={drive:["驅動／推出／保持力","#2a6fdb"],res:["阻力","#e07b00"],grav:["重力","#7a7a7a"],rad:["軌道＋吸附徑向力","#9b59b6"],land:["向下噴射的反推力","#c0392b"],spring:["彈簧力","#27ae60"],damper:["阻尼力","#16a085"],brake:["煞車力","#8e44ad"]};
+$("lg").innerHTML=Object.values(FC).map(a=>`<span><u style="background:${a[1]}"></u>${a[0]}</span>`).join("")+'<span>箭頭＝車輛所受的力；錐形火焰＝噴出氣體（方向相反）</span>';
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let D=[],T=0,EM=4e5,EN=0,pt=0,play=false,lastTs=0,az=.8,el=.22,dist=52,tgt=new THREE.Vector3(-10,10,0);
+const ren=new THREE.WebGLRenderer({antialias:true}),sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,1.7,.1,500);$("wrap").appendChild(ren.domElement);
+sc.background=new THREE.Color(0x04060a);sc.add(new THREE.HemisphereLight(0x8fa3c0,0x10131a,.75));const dl=new THREE.DirectionalLight(0xdfe8ff,.9);dl.position.set(14,26,30);sc.add(dl);const dl2=new THREE.DirectionalLight(0x6a86b8,.4);dl2.position.set(-20,10,-20);sc.add(dl2);
+const M=(c,e)=>new THREE.MeshStandardMaterial({color:c,roughness:.8,emissive:e||0,emissiveIntensity:e?1:0,side:THREE.DoubleSide});
+const fl0=new THREE.Mesh(new THREE.PlaneGeometry(300,140),M(0x0d0f12));fl0.rotation.x=-Math.PI/2;fl0.position.set(-40,-.92,0);sc.add(fl0);
+for(const z of[-9,9]){const e=new THREE.Mesh(new THREE.BoxGeometry(260,.08,.25),M(0xff2a1a,0xff2a1a));e.position.set(-60,-.86,z);sc.add(e)}
+const VM=(c,m=.2)=>new THREE.MeshStandardMaterial({color:c,roughness:.35,metalness:m}),GL=new THREE.MeshStandardMaterial({color:0x05080c,roughness:.1,metalness:.6}),TY=new THREE.MeshStandardMaterial({color:0x15181c,roughness:.9});
+function wh(g,xs,W,r){for(const x of xs)for(const sd of[-1,1]){const w=new THREE.Mesh(new THREE.CylinderGeometry(r,r,.28,18),TY);w.rotation.x=Math.PI/2;w.position.set(x,r,sd*(W/2-.1));g.add(w)}}
+function put(g,off){g.rotation.y=Math.PI/2;g.position.set(LUX0-off,-.9,0);sc.add(g)}
+function sedan(x,L,W,H,hb,xa,xc,col){const g=new THREE.Group(),a=-L/2,b=L/2;
+ g.add(ext([[a,.3],[a,hb-.12],[a+.3,hb],[b-1.1,hb],[b-.25,hb-.2],[b,.55],[b,.3]],W,VM(col)));
+ g.add(ext([[xc,hb],[xc+.4,H-.04],[xa-.5,H-.04],[xa,hb]],W*.94,GL));g.add(ext([[xc+.35,H-.05],[xa-.45,H-.05],[xa-.45,H],[xc+.35,H]],W*.88,VM(col)));
+ wh(g,[-L*.31,L*.32],W,.34);put(g,x)}
+function pod(x){const g=new THREE.Group();g.add(ext([[-1.95,.3],[-1.95,.95],[-1.55,1.35],[-.6,1.55],[.7,1.55],[1.45,1.25],[1.95,.85],[1.95,.3]],1.9,VM(0xcfd3d8,.5)));
+ g.add(ext([[-1.2,1.05],[-.55,1.48],[.65,1.48],[1.4,1.2],[1.62,1.0],[-1.2,1.0]],1.8,GL));wh(g,[-1.25,1.3],1.9,.36);put(g,x)}
+function ct(x){const g=new THREE.Group();g.add(ext([[-2.95,.45],[-2.95,1.5],[-.5,1.95],[.4,1.95],[2.95,.85],[2.95,.45]],2.03,VM(0xb9c0c7,.85)));
+ g.add(ext([[2.2,1.17],[.55,1.88],[.5,1.93],[2.15,1.22]],1.96,GL));g.add(ext([[-.3,1.45],[.3,1.85],[.35,1.9],[-.3,1.5]],2.06,GL));wh(g,[-1.9,1.9],2.03,.45);put(g,x)}
+function semi(x){const g=new THREE.Group(),i=new THREE.Group();i.position.x=-.8;g.add(i);
+ i.add(ext([[-7.3,.9],[-7.3,3.9],[1.4,3.9],[1.4,.9]],2.55,VM(0xf2f3f4,.1)));i.add(ext([[-7.3,1.9],[1.4,1.9],[1.4,2.1],[-7.3,2.1]],2.6,VM(0xc0392b)));
+ i.add(ext([[1.7,.55],[1.7,3.5],[3.6,3.5],[5.1,2.4],[5.1,.55]],2.55,VM(0xf2f3f4,.1)));i.add(ext([[3.75,3.4],[5.02,2.5],[5.02,2.75],[3.8,3.6]],2.4,GL));i.add(ext([[2.2,2.45],[3.4,2.45],[3.4,3.25],[2.2,3.25]],2.58,GL));
+ wh(i,[2.3,4.4,-6.2,-5.1,-4.0],2.55,.5);put(g,x)}
+pod(0);ct(2.7);semi(5.9);sedan(9.1,4.75,1.92,1.62,1.0,1.1,-2.0,0xf2f3f4);sedan(11.6,4.7,1.85,1.44,.95,1.05,-1.15,0x1a2f55);
+const trackG=new THREE.Group();sc.add(trackG);
+function beams(segs,rad,mt){const im=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,6),mt,segs.length),mx=new THREE.Matrix4(),q=new THREE.Quaternion(),Y=new THREE.Vector3(0,1,0);
+ segs.forEach((s,i)=>{const d=new THREE.Vector3().subVectors(s[1],s[0]),L=d.length();q.setFromUnitVectors(Y,d.normalize());mx.compose(s[0].clone().add(s[1]).multiplyScalar(.5),q,new THREE.Vector3(rad,L,rad));im.setMatrixAt(i,mx)});im.instanceMatrix.needsUpdate=true;return im}
+function buildTrack(){while(trackG.children.length){const o=trackG.children[0];trackG.remove(o);if(o.geometry)o.geometry.dispose()}
+ const R=P.R,PE=P.arc*Math.PI/180,rr=R+.88,RT=rr+1,RED=0xff2a1a,A1=PE-Math.PI/2,sh=new THREE.Shape();sh.absarc(0,R,RT,-Math.PI/2,A1,false);sh.absarc(0,R,rr,A1,-Math.PI/2,true);
+ const eg=new THREE.ExtrudeGeometry(sh,{depth:5.6,bevelEnabled:false,curveSegments:96});eg.translate(0,0,-2.8);trackG.add(new THREE.Mesh(eg,M(0x9b9d9f)));
+ const rib=(r,z0,z1,mt)=>{const P_=[],ix=[],N=72;for(let i=0;i<=N;i++){const a=PE*i/N;for(const z of[z0,z1])P_.push(r*Math.sin(a),R-r*Math.cos(a),z)}for(let i=0;i<N;i++){const a=2*i;ix.push(a,a+1,a+2,a+1,a+3,a+2)}
+  const g2=new THREE.BufferGeometry();g2.setAttribute("position",new THREE.Float32BufferAttribute(P_,3));g2.setIndex(ix);g2.computeVertexNormals();trackG.add(new THREE.Mesh(g2,mt))};
+ rib(rr-.015,-2.8,-2.62,M(RED,RED));rib(rr-.015,2.62,2.8,M(RED,RED));rib(rr-.015,-.9,-.84,M(0xe8e8e8,0x333333));rib(rr-.015,.84,.9,M(0xe8e8e8,0x333333));
+ const N=36,Q=(a,r,z)=>new THREE.Vector3(r*Math.sin(a),R-r*Math.cos(a),z),rA=RT+.25,rB=RT+1.9,segs=[];
+ for(const z of[-3.3,-4.6])for(let i=0;i<N;i++){const a0=PE*i/N,a1=PE*(i+1)/N;segs.push([Q(a0,rA,z),Q(a1,rA,z)],[Q(a0,rB,z),Q(a1,rB,z)],[Q(a0,rA,z),Q(a0,rB,z)],[Q(a0,rA,z),Q(a1,rB,z)])}
+ for(let i=0;i<=N;i++){const a=PE*i/N;for(const r of[rA,rB])segs.push([Q(a,r,-3.3),Q(a,r,-4.6)]);segs.push([Q(a,RT,-2.8),Q(a,rA,-3.3)])}
+ trackG.add(beams(segs,.09,new THREE.MeshStandardMaterial({color:0x7d8fb0,metalness:.6,roughness:.4})))}
+const car=new THREE.Group(),bodyG=new THREE.Group(),mat=new THREE.MeshStandardMaterial({color:0xf4f6f8,roughness:.3,metalness:.1});car.add(bodyG);
+function ext(pts,d,mt){const sh=new THREE.Shape(pts.map(p=>new THREE.Vector2(p[0],p[1])));const e=new THREE.ExtrudeGeometry(sh,{depth:d,bevelEnabled:true,bevelThickness:.08,bevelSize:.08,bevelSegments:2});e.translate(0,0,-d/2);return new THREE.Mesh(e,mt)}
+bodyG.add(ext([[-2.25,-.5],[-2.25,-.05],[-1.9,.25],[-1,.32],[-.7,.62],[.1,.7],[.7,.55],[1.5,.22],[2.25,0],[2.25,-.5]],1.7,mat));
+bodyG.add(ext([[-.72,.645],[.1,.735],[.72,.585],[1.04,.46],[1.02,.4],[.7,.52],[.1,.67],[-.7,.58]],1.45,new THREE.MeshStandardMaterial({color:0x030405,roughness:.12,metalness:.6})));
+{const tl=new THREE.Mesh(new THREE.BoxGeometry(.06,.09,1.7),new THREE.MeshStandardMaterial({color:0xff2a1a,emissive:0xff2a1a}));tl.position.set(-2.31,.05,0);bodyG.add(tl)}
+for(const sx of[-1.3,1.525])for(const sz of[-1,1]){const w=new THREE.Mesh(new THREE.CylinderGeometry(.38,.38,.32,20),new THREE.MeshStandardMaterial({color:0x15181c}));w.rotation.x=Math.PI/2;w.position.set(sx,-.5,sz*.95);car.add(w)}
+const fg=new THREE.ConeGeometry(.28,1,12);fg.translate(0,.5,0);const fm=c=>new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:.85});
+const sf=[1,-1].map(sz=>{const f=new THREE.Mesh(fg,fm(0xbfe6ff));f.visible=false;bodyG.add(f);return f});
+const jet=new THREE.Mesh(fg,fm(0xcfeaff));jet.visible=false;jet.position.set(0,-.55,0);bodyG.add(jet);sc.add(car);
+const AR={};function arrow(k,col){return AR[k]||(AR[k]=(a=>{a.visible=false;sc.add(a);return a})(new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,col,.6,.35)))}
+const trail=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({vertexColors:true}));sc.add(trail);
+const qa=new THREE.Quaternion(),qb=new THREE.Quaternion(),AX=new THREE.Vector3(1,0,0),AZ=new THREE.Vector3(0,0,1);
+function idx(t){let a=0,b=D.length-1;while(a<b){const q=(a+b)>>1;D[q].t<t?a=q+1:b=q}return a}
+function build(){D=sim();T=D[D.length-1].t;EN=Math.min(...D.map(r=>Math.min(r.Wb,r.PE,r.Em,r.KE,r.Wd,r.Qt,0)));EM=Math.ceil(Math.max(...D.map(r=>Math.max(r.Em,r.Qt,r.KE,r.PE,r.Wd)))*1.05/1e5)*1e5;$("tm").max=T;pt=Math.min(pt,T);buildTrack();
+ const Pp=[],C=[];D.forEach(r=>{Pp.push(r.x,r.y,0);const c=new THREE.Color(CL[r.st]);C.push(c.r,c.g,c.b)});trail.geometry.setAttribute("position",new THREE.Float32BufferAttribute(Pp,3));trail.geometry.setAttribute("color",new THREE.Float32BufferAttribute(C,3));
+ const w=$("wn"),msg=[],fl_=D.filter(r=>r.st==3||r.st==4),thL=fl_[fl_.length-1].th;S.thL=thL;
+ if(S.lost)msg.push(S.lost.stall?`推出力（或驅動力）不足：t = ${S.lost.t.toFixed(2)} s 在 φ = ${(S.lost.phi*180/Math.PI).toFixed(0)}° 處速度降為 0，車子停不住而掉落。`:`吸附力不足：t = ${S.lost.t.toFixed(2)} s 起所需向外拉力 ${(S.lost.sup/1000).toFixed(1)} kN，超過上限 ${(S.cap/1000).toFixed(1)} kN，車子離開坡面。`);
+ if(thL<Math.PI-.35)msg.push(`觸地時車身只翻到 ${(thL*180/Math.PI).toFixed(0)}°，尚未翻正。`);
+ if(S.vland>8)msg.push(`觸地垂直速率 ${S.vland.toFixed(1)} m/s，屬於重摔。`);
+ if(S.noHold)msg.push(`到頂速度 ${S.noHold.toFixed(1)} m/s 太快，來不及在停留點停住，直接衝出。`);
+ if(S.crash)msg.push(`撞上停放的車輛：t = ${S.crash.t.toFixed(2)} s，撞擊速度 ${S.crash.v.toFixed(1)} m/s。`);
+ if(S.rested)msg.push("車子停在停放的車輛上，沒有落到地面。");
+ if(S.tfUsed<P.tf-1e-6)msg.push(`為了落地前翻正，翻轉時間自動縮短為 ${S.tfUsed.toFixed(2)} s（每側推力約 ${(S.FS/1000).toFixed(1)} kN）。`);
+ w.style.display=msg.length?"block":"none";w.textContent=msg.join("　｜　");
+ const th=D.find(r=>r.st==3),ld=D.find(r=>r.st==5),n=(a,b)=>a.toFixed(b);
+ $("dv").innerHTML=kv([["到頂速度（停住前）",(S.varr||0).toFixed(2)+" m/s"],["離坡速度",th?n(S.vexit,2)+" m/s（"+n(S.vexit*3.6,0)+" km/h）":"—"],["全程最大吸附需求",n(S.maxSup/1000,1)+" kN（上限 "+n(S.cap/1000,1)+" kN）"],["滾轉力矩／每側推力",n(S.tau,0)+" N·m／"+n(S.FS,0)+" N"],["空中時間（離坡→觸地）",S.rested?"—（停在車上）":n(S.tair,2)+" s"],["觸地垂直速率",S.rested?"—":n(S.vland,2)+" m/s"],["彈簧最大壓縮",S.rested?"—":n(S.xcmax||0,3)+" m"],["停止位置 x",n(S.xstop,1)+" m"]]);
+ draw()}
+const kv=a=>a.map(q=>`<span>${q[0]}</span><b>${q[1]}</b>`).join("");
+const dot=c=>`<i class="dt" style="background:${c}"></i>`,sg=v=>(v<0?"−":"+")+Math.abs(v).toFixed(0)+" N";
+function dif(i,f){if(D[i].hit||D[Math.max(0,i-2)].hit||D[Math.min(D.length-1,i+2)].hit)return null;const a=D[Math.max(0,i-2)],b=D[Math.min(D.length-1,i+2)];return a.st==b.st&&b.t>a.t?(f(b)-f(a))/(b.t-a.t):null}
+function blk(h,items,sum,num){const a=sum/S.m,ok=num==null?"":(Math.abs(num-a)<.25?`　✓ 數值微分 ${num.toFixed(2)}`:`　數值微分 ${num.toFixed(2)}`);
+ return `<div class="bq"><b>${h}</b><div>${items.map(x=>dot(x[2])+x[0]+" "+sg(x[1])).join("<br>")}</div><div>ΣF = <b>${sum.toFixed(0)} N</b>　a = <b>${a.toFixed(2)} m/s²</b>${ok}</div></div>`}
+function balance(r,i){const mg=S.mg,m=S.m,F=r.F,cc=q=>FC[q][1],o=[],sp=Math.hypot(r.vx,r.vy);
+ if(r.st<=2){const p=r.phi,gt=-mg*Math.sin(p),sT=F.drive+F.res+gt;
+  o.push(blk("沿軌道切線方向",[[["驅動力（含煞車）","保持力（馬達／噴流）","離坡推出力"][r.st],F.drive,cc("drive")],["阻力",F.res,cc("res")],["重力切線分量",gt,cc("grav")]],sT,r.st==0?dif(i,q=>Math.hypot(q.vx,q.vy)):null));
+  const gn=-mg*Math.cos(p),sN=F.rad+gn;o.push(blk("徑向（＋＝朝圓心）",[["軌道＋吸附力",F.rad,cc("rad")],["重力徑向分量",gn,cc("grav")]],sN,null)+`<div class="note">需要 ΣFₙ = m·v²/R = ${(m*sp*sp/S.R).toFixed(0)} N；軌道＋吸附力為負＝必須向外拉住車子（上限 ${(S.cap/1000).toFixed(1)} kN）。</div>`)}
+ else if(r.st<5){const T=F.land||0,Fx=-T*Math.sin(r.phi)*Math.cos(r.th),Fy=T*Math.cos(r.phi)*Math.cos(r.th);
+  o.push(blk("垂直方向（＋＝向上）",[["噴射反推力（垂直分量）",Fy,cc("land")],["重力",-mg,cc("grav")]],Fy-mg,dif(i,q=>q.vy)));
+  o.push(blk("水平方向",[["噴射反推力（水平分量）",Fx,cc("land")]],Fx,dif(i,q=>q.vx)));
+  const tq=F.torque||0;o.push(`<div class="bq"><b>滾轉（繞長軸）</b><div>${dot("#8fd0ff")}兩側推進器力偶　Στ = ${tq.toFixed(0)} N·m　α = ${(tq/S.I).toFixed(2)} rad/s²</div><div>每側推力 ${tq?S.FS.toFixed(0):0} N、方向相反，ΣF = 0，不改變質心運動</div></div>`)}
+ else{const sY=F.spring+F.damper-mg;o.push(blk("垂直方向（＋＝向上）",[["彈簧力",F.spring,cc("spring")],["阻尼力",F.damper,cc("damper")],["重力",-mg,cc("grav")]],sY,dif(i,q=>q.vy)));
+  o.push(blk("水平方向",[["煞車力（與速度反向）",F.brake,cc("brake")]],F.brake,null))}
+ if(r.hit)o.push('<div class="bq"><b>碰撞接觸中</b><div>此刻與停放的車輛接觸，接觸力以衝量處理，沒有列入上面的平衡。</div></div>');
+ return o.join("")}
+function draw(){const W=$("wrap").clientWidth,H=Math.round(W*(W<600?.85:.56));ren.setPixelRatio(devicePixelRatio);ren.setSize(W,H,false);ren.domElement.style.height=H+"px";cam.aspect=W/H;cam.updateProjectionMatrix();
+ const i=idx(pt),r=D[i],F=r.F,mg=S.mg;
+ car.position.set(r.x,Math.max(r.y,0),0);bodyG.position.y=Math.min(r.y,0);qb.setFromAxisAngle(AZ,r.phi);qa.setFromAxisAngle(AX.set(Math.cos(r.phi),Math.sin(r.phi),0),r.th);car.quaternion.copy(qa).multiply(qb);
+ trail.geometry.setDrawRange(0,i+1);
+ const tq=F.torque||0,fl=Math.abs(tq)>1,sgn=Math.sign(tq),T=F.land||0;
+ for(const j of[0,1]){const a=arrow("s"+j,"#8fd0ff");a.visible=fl&&$("fv").checked;if(fl){const p=new THREE.Vector3(0,0,(j?-1:1)*P.arm);car.localToWorld(p);a.position.copy(p);a.setDirection(new THREE.Vector3(0,(j?-1:1)*sgn,0).applyQuaternion(car.quaternion));a.setLength(2,.5,.3)}}
+ sf.forEach((f,j)=>{f.visible=fl;if(fl){f.position.set(0,0,(j?-1:1)*P.arm);f.scale.set(1,-(j?-1:1)*sgn*1.8,1)}});
+ jet.visible=T>1;if(T>1)jet.scale.set(1.5,-Math.max(.8,T/S.TB*5.5),1.5);
+ const ph=r.phi,tx=Math.cos(ph),ty=Math.sin(ph),vec=(k,fx,fy,fz)=>{const a=arrow(k,FC[k][1]),L=Math.hypot(fx,fy);a.visible=$("fv").checked&&L>50;if(a.visible){a.position.set(r.x,Math.max(r.y,0),fz||0);a.setDirection(new THREE.Vector3(fx/L,fy/L,0));a.setLength(Math.min(L/6000,8),.7,.4)}};
+ for(const k in AR)if(k[0]!="s")AR[k].visible=false;
+ if(r.st<=2){vec("drive",F.drive*tx,F.drive*ty);vec("res",F.res*tx,F.res*ty,.5);vec("rad",-F.rad*ty,F.rad*tx,-.5)}
+ vec("grav",0,F.grav,-1);if(T>1)vec("land",-T*Math.sin(ph)*Math.cos(r.th),T*Math.cos(ph)*Math.cos(r.th),.8);if(F.spring!=null){vec("spring",0,F.spring+F.damper);vec("brake",F.brake,0,.5)}
+ if($("fo").checked)tgt.lerp(new THREE.Vector3(r.x,Math.max(r.y,3)*.8+2,0),.12);
+ const shk=S.crash&&r.t>=S.crash.t?Math.max(0,1-(r.t-S.crash.t)/.8):0;mat.color.setRGB(1,1-.75*shk,1-.75*shk);
+ cam.position.set(tgt.x+dist*Math.sin(az)*Math.cos(el)+Math.sin(r.t*97)*shk*.9,tgt.y+dist*Math.sin(el)+Math.sin(r.t*131)*shk*.9,tgt.z+dist*Math.cos(az)*Math.cos(el));cam.lookAt(tgt);ren.render(sc,cam);
+ $("stg").textContent=NM[r.st];$("stg").style.background=CL[r.st];
+ const sp=Math.hypot(r.vx,r.vy),n=(a,b)=>a.toFixed(b);
+ $("kv").innerHTML=kv([["時間",n(r.t,2)+" s"],["速率",n(sp,2)+" m/s"],["水平／垂直速度",n(r.vx,2)+" / "+n(r.vy,2)],["質心高度",n(r.y,2)+" m"],["長軸滾轉角",n(r.th*180/Math.PI,0)+"°"],["吸附需求／上限",n(r.sup/1000,1)+" / "+n(S.cap/1000,1)+" kN"]]);
+ const fl2=[];for(const q in F){if(Math.abs(F[q])>.5||q=="rad"){const fc=FC[q];fl2.push([dot(fc?fc[1]:"#8fd0ff")+(fc?fc[0]:(q=="torque"?"姿態力矩(N·m)":q)),n(F[q],0)])}}if(fl)fl2.push([dot("#8fd0ff")+"側推進器（每側）",n(S.FS,0)]);$("fk").innerHTML=kv(fl2);
+ $("bl").innerHTML=balance(r,i);
+ const bars=[["平動動能",r.KE,"#2a6fdb"],["重力位能",r.PE,"#e07b00"],["轉動動能",r.KR,"#9b59b6"],["彈簧位能",r.Es,"#27ae60"],["驅動力做功(累計，負＝煞車)",r.Wd,"#2a6fdb"],["噴射推力作功(累計)",r.Wb,"#c0392b"],["碰撞接觸作功(累計)",r.Wk,"#e74c3c"],["阻力散失(熱)",r.Qr,"#e07b00"],["碰撞散失(熱)",r.Qk,"#e74c3c"],["煞車散失(熱)",r.Qb,"#8e44ad"],["阻尼散失(熱)",r.Qd,"#16a085"]];
+ $("eb").innerHTML=bars.map(b=>`<div class="bar"><span style="text-align:left;color:var(--fg)">${b[0]}</span><div><i style="width:${Math.max(0,Math.min(100,Math.abs(b[1])/EM*100))}%;background:${b[2]}"></i></div><span>${Math.round(b[1]).toLocaleString()}</span></div>`).join("");
+ const rs=r.Em-D[0].Em-(r.Wd+r.Wb+r.Wq+r.Wk-r.Qr-r.Qb-r.Qd-r.Qk);$("ebn").textContent=`能量收支：輸入功（驅動＋噴射＋力矩＋碰撞接觸）− 散失熱 = 機械能變化，殘差 ${rs.toFixed(1)} J。噴射氣體帶走的能量未另外建模。`;
+ $("tm").value=pt;ecd(r.t)}
+const ec=$("ec"),ex=ec.getContext("2d");
+const EL=[["Em","","機械能"],["KE","#2a6fdb","平動動能"],["PE","#e07b00","重力位能"],["Wd","#8e44ad","驅動力做功(累計)"],["Wb","#c0392b","噴射推力作功(累計)"],["Qt","#16a085","散失熱(累計)"]];
+function ecd(t){const d=devicePixelRatio||1,w=Math.max(260,ec.parentNode.clientWidth-20),h=220;ec.style.width=w+"px";ec.style.height=h+"px";ec.width=Math.round(w*d);ec.height=Math.round(h*d);
+ const W=ec.width,H=ec.height,L=56*d,B=24*d,Tp=8*d,y0=Math.floor(EN/1e5)*1e5,x=q=>L+q/T*(W-L-10*d),y=q=>H-B-(q-y0)/(EM-y0)*(H-B-Tp);ex.clearRect(0,0,W,H);ex.font=(11*d)+"px sans-serif";
+ let s0=0;for(let i=1;i<=D.length;i++){if(i==D.length||D[i].st!=D[s0].st){ex.fillStyle=CL[D[s0].st]+"22";ex.fillRect(x(D[s0].t),Tp,Math.max(1,x(D[i-1].t)-x(D[s0].t)),H-B-Tp);s0=i}}
+ ex.textAlign="right";ex.fillStyle=css("--mu");ex.strokeStyle=css("--ln");ex.lineWidth=1;const st=Math.max(1e5,Math.ceil((EM-y0)/4/1e5)*1e5);for(let q=y0;q<=EM+1;q+=st){ex.beginPath();ex.moveTo(L,y(q));ex.lineTo(W-10*d,y(q));ex.stroke();ex.fillText(Math.round(q/1000)+" kJ",L-6*d,y(q)+4*d)}
+ ex.textAlign="center";for(let q=0;q<=T;q+=2)ex.fillText(q+" s",x(q),H-6*d);
+ EL.forEach(a=>{ex.strokeStyle=a[1]||css("--fg");ex.lineWidth=2*d;ex.beginPath();D.forEach((r,q)=>{q?ex.lineTo(x(r.t),y(r[a[0]])):ex.moveTo(x(r.t),y(r[a[0]]))});ex.stroke()});
+ ex.strokeStyle=css("--ac");ex.lineWidth=1.5*d;ex.beginPath();ex.moveTo(x(t),Tp);ex.lineTo(x(t),H-B);ex.stroke()}
+$("el").innerHTML=EL.map(a=>`<span><u style="background:${a[1]||"var(--fg)"}"></u>${a[2]}</span>`).join("")+NM.map((n,i)=>`<span><u style="background:${CL[i]};opacity:.4;height:9px"></u>${n}</span>`).join("");
+$("pg").innerHTML=DEF.map(d=>`<label class="pr"><span>${d[1]}<b id="pv_${d[0]}">${d[6]} ${d[2]}</b></span><input type="range" id="p_${d[0]}" min="${d[3]}" max="${d[4]}" step="${d[5]}" value="${d[6]}"></label>`).join("");
+function holdMax(){const h=$("p_hold"),mx=Math.floor(P.arc-2.4/P.R*180/Math.PI);h.max=mx;if(P.hold>mx){P.hold=mx;h.value=mx;$("pv_hold").textContent=mx+" °"}}
+let tm0;DEF.forEach(d=>{$("p_"+d[0]).oninput=e=>{P[d[0]]=+e.target.value;$("pv_"+d[0]).textContent=P[d[0]]+" "+d[2];if(d[0]=="arc"||d[0]=="R")holdMax();clearTimeout(tm0);tm0=setTimeout(build,120)}});
+$("pr").onclick=()=>{DEF.forEach(d=>{P[d[0]]=d[6];$("p_"+d[0]).value=d[6];$("pv_"+d[0]).textContent=d[6]+" "+d[2]});holdMax();build()};
+function loop(ts){if(play){pt+=(ts-lastTs)/1000*+$("sp").value;if(pt>=T){pt=T;play=false;$("pl").textContent="播放"}draw()}lastTs=ts;requestAnimationFrame(loop)}
+$("pl").onclick=()=>{if(pt>=T)pt=0;play=!play;$("pl").textContent=play?"暫停":"播放"};
+$("rs").onclick=()=>{pt=0;play=false;$("pl").textContent="播放";draw()};$("tm").oninput=e=>{pt=+e.target.value;draw()};
+for(const id of["fv","fo"])$(id).onchange=draw;addEventListener("resize",draw);
+let dr=null;const cvs=ren.domElement;cvs.onpointerdown=e=>{dr=[e.clientX,e.clientY];cvs.setPointerCapture(e.pointerId)};cvs.onpointerup=()=>dr=null;
+cvs.onpointermove=e=>{if(!dr)return;az-=(e.clientX-dr[0])*.006;el=Math.max(-.2,Math.min(1.4,el+(e.clientY-dr[1])*.006));dr=[e.clientX,e.clientY];draw()};
+cvs.onwheel=e=>{e.preventDefault();dist=Math.max(8,Math.min(110,dist*(1+Math.sign(e.deltaY)*.08)));draw()};
+$("t1").onclick=()=>{$("v1").hidden=false;$("v2").hidden=true;$("t1").className="on";$("t2").className="";draw()};
+$("t2").onclick=()=>{$("v1").hidden=true;$("v2").hidden=false;$("t2").className="on";$("t1").className="";$("code").textContent=$("main").textContent};
+$("cp").onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText($("main").textContent).then(()=>{$("cp").textContent="已複製";setTimeout(()=>$("cp").textContent="複製程式碼",1500)}).catch(()=>{})};
+build();requestAnimationFrame(loop);
+</script></body></html>
